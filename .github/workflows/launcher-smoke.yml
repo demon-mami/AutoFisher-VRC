@@ -19,12 +19,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run one-click launcher against a fake installed runtime
+      - name: Existing runtime update and cached restart
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          $root = Join-Path $env:RUNNER_TEMP "AutoFisher Test Root"
+          $root = Join-Path $env:RUNNER_TEMP "AutoFisher Existing Root"
           $exeDir = Join-Path $root "_runtime\app\VRC auto fish 26031901"
           New-Item -ItemType Directory -Force -Path $exeDir | Out-Null
           New-Item -ItemType File -Force -Path (Join-Path $exeDir "VRC auto fish-CUDA.exe") | Out-Null
@@ -32,18 +32,81 @@ jobs:
 
           $env:AUTOFISHER_STABLE_REF_OVERRIDE = "${{ github.sha }}"
           $env:AUTOFISHER_LAUNCHER_TEST = "1"
+          Remove-Item Env:AUTOFISHER_BASE_URL_OVERRIDE -ErrorAction SilentlyContinue
+          Remove-Item Env:AUTOFISHER_BASE_SHA256_OVERRIDE -ErrorAction SilentlyContinue
 
           & (Join-Path $root "START.bat")
           if ($LASTEXITCODE -ne 0) {
-            throw "First START.bat run failed with exit code $LASTEXITCODE"
+            throw "Existing-runtime START.bat run failed with exit code $LASTEXITCODE"
           }
 
-          Write-Host "--- Runtime tree after first run ---"
-          Get-ChildItem -LiteralPath $root -Recurse -Force | ForEach-Object {
-            Write-Host $_.FullName
+          $required = @(
+            "core\bite_detector.py",
+            "core\pd_controller.py",
+            "core\control_executor.py",
+            "core\control_backends.py",
+            "gui\app.py"
+          )
+          foreach ($relative in $required) {
+            $path = Join-Path (Join-Path $exeDir "patch") $relative
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Existing-runtime patch missing: $relative"
+            }
           }
 
-          $patch = Join-Path $exeDir "patch"
+          $installedRef = (Get-Content -LiteralPath (Join-Path $root "_runtime\PATCH_REF.txt") -Raw).Trim()
+          if ($installedRef -ne "${{ github.sha }}") {
+            throw "Existing-runtime ref mismatch: $installedRef"
+          }
+
+          & (Join-Path $root "START.bat")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Cached START.bat run failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Fresh install bootstrap with verified 7z fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $fixtureParent = Join-Path $env:RUNNER_TEMP "AutoFisher Base Fixture"
+          $fixtureApp = Join-Path $fixtureParent "VRC auto fish 26031901"
+          $archive = Join-Path $env:RUNNER_TEMP "AutoFisher-base-fixture.7z"
+          New-Item -ItemType Directory -Force -Path $fixtureApp | Out-Null
+          New-Item -ItemType File -Force -Path (Join-Path $fixtureApp "VRC auto fish-CUDA.exe") | Out-Null
+          Set-Content -LiteralPath (Join-Path $fixtureApp "fixture.txt") -Value "fixture" -Encoding ASCII
+
+          Push-Location $fixtureParent
+          & tar.exe -caf $archive "VRC auto fish 26031901"
+          $tarExit = $LASTEXITCODE
+          Pop-Location
+          if ($tarExit -ne 0 -or -not (Test-Path -LiteralPath $archive)) {
+            throw "Failed to create the 7z fixture"
+          }
+
+          $fixtureHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          $fileUrl = "file:///" + ($archive -replace '\\','/')
+
+          $root = Join-Path $env:RUNNER_TEMP "AutoFisher Fresh Root"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          Copy-Item -LiteralPath ".\START.bat" -Destination (Join-Path $root "START.bat") -Force
+
+          $env:AUTOFISHER_STABLE_REF_OVERRIDE = "${{ github.sha }}"
+          $env:AUTOFISHER_LAUNCHER_TEST = "1"
+          $env:AUTOFISHER_BASE_URL_OVERRIDE = $fileUrl
+          $env:AUTOFISHER_BASE_SHA256_OVERRIDE = $fixtureHash
+
+          & (Join-Path $root "START.bat")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Fresh-install START.bat run failed with exit code $LASTEXITCODE"
+          }
+
+          $installedExe = Get-ChildItem -LiteralPath (Join-Path $root "_runtime\app") -Recurse -File -Filter "VRC auto fish-CUDA.exe" | Select-Object -First 1
+          if ($null -eq $installedExe) {
+            throw "Fresh-install runtime EXE was not installed"
+          }
+
+          $patch = Join-Path $installedExe.DirectoryName "patch"
           $required = @(
             "core\bite_detector.py",
             "core\pd_controller.py",
@@ -54,22 +117,13 @@ jobs:
           foreach ($relative in $required) {
             $path = Join-Path $patch $relative
             if (-not (Test-Path -LiteralPath $path)) {
-              throw "Missing patched file: $relative"
+              throw "Fresh-install patch missing: $relative"
             }
           }
 
-          $refFile = Join-Path $root "_runtime\PATCH_REF.txt"
-          if (-not (Test-Path -LiteralPath $refFile)) {
-            throw "PATCH_REF.txt was not created"
-          }
-          $installedRef = (Get-Content -LiteralPath $refFile -Raw).Trim()
+          $installedRef = (Get-Content -LiteralPath (Join-Path $root "_runtime\PATCH_REF.txt") -Raw).Trim()
           if ($installedRef -ne "${{ github.sha }}") {
-            throw "Installed ref mismatch: $installedRef"
+            throw "Fresh-install ref mismatch: $installedRef"
           }
 
-          & (Join-Path $root "START.bat")
-          if ($LASTEXITCODE -ne 0) {
-            throw "Second cached START.bat run failed with exit code $LASTEXITCODE"
-          }
-
-          Write-Host "Launcher smoke test passed."
+          Write-Host "Existing-runtime and fresh-install launcher smoke tests passed."
