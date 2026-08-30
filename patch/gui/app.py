@@ -18,12 +18,14 @@ install_bite_wait_patch(FishingBot)
 
 
 class FishingApp:
-    APP_VERSION = "0.2.1"
+    APP_VERSION = "0.2.2"
+    AUTO_STOP_CATCHES = 900
 
     def __init__(self, root: tk.Tk):
         self.root = root
         self.bot_thread = None
         self._closing = False
+        self._run_start_count = 0
 
         # Fixed normal-use profile.
         config.IL_RECORD = False
@@ -167,6 +169,11 @@ class FishingApp:
             return
 
         try:
+            # Each F9 start gets its own 0 -> 900 catch window without
+            # resetting the bot's lifetime counter/statistics.
+            self._run_start_count = int(self.bot.fish_count)
+            self.var_count.set("釣果  0")
+
             self.bot.running = True
             self.bot.state = "status.running"
 
@@ -186,14 +193,14 @@ class FishingApp:
             self.var_status.set("開始エラー")
             self.btn_main.config(text="開始  [F9]")
 
-    def _stop(self):
+    def _stop(self, status_text="待機"):
         if self._closing:
             return
 
         self.bot.running = False
         self.bot._force_minigame = False
         self.bot.input.safe_release()
-        self.var_status.set("待機")
+        self.var_status.set(status_text)
         self.btn_main.config(text="開始  [F9]")
 
     def _toggle_start_stop(self):
@@ -222,14 +229,21 @@ class FishingApp:
             return
 
         try:
+            run_count = max(0, int(self.bot.fish_count) - self._run_start_count)
+            display_count = min(run_count, self.AUTO_STOP_CATCHES)
+            self.var_count.set("釣果  %d" % display_count)
+
             if self.bot.running:
-                self.var_status.set("自動釣り中")
-                self.btn_main.config(text="停止  [F9]")
+                if run_count >= self.AUTO_STOP_CATCHES:
+                    self._stop(
+                        status_text="%d匹で自動停止" % self.AUTO_STOP_CATCHES
+                    )
+                else:
+                    self.var_status.set("自動釣り中")
+                    self.btn_main.config(text="停止  [F9]")
             elif self.var_status.get() == "自動釣り中":
                 self.var_status.set("待機")
                 self.btn_main.config(text="開始  [F9]")
-
-            self.var_count.set("釣果  %d" % self.bot.fish_count)
 
             if self.bot.window.is_valid():
                 self.var_connection.set("VRChat: 接続済み")
