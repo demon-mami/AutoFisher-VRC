@@ -13,11 +13,15 @@ set "REF_URL=https://raw.githubusercontent.com/demon-mami/AutoFisher-VRC/main/ST
 if not exist "%CACHE_DIR%" mkdir "%CACHE_DIR%" >nul 2>nul
 
 set "STABLE_REF="
+if defined AUTOFISHER_STABLE_REF_OVERRIDE set "STABLE_REF=%AUTOFISHER_STABLE_REF_OVERRIDE%"
+if defined STABLE_REF goto HAVE_REF
+
 curl.exe -fsSL --retry 3 --connect-timeout 10 "%REF_URL%" -o "%TMP_REF%" >nul 2>nul
 if errorlevel 1 goto USE_CACHE
 set /p "STABLE_REF="<"%TMP_REF%"
 del /q "%TMP_REF%" >nul 2>nul
 
+:HAVE_REF
 call :VALIDATE_REF "%STABLE_REF%"
 if errorlevel 1 goto USE_CACHE
 
