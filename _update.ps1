@@ -7,8 +7,8 @@ $VersionFile = Join-Path $Runtime 'PATCH_VERSION.txt'
 $BaseUrl = 'https://raw.githubusercontent.com/demon-mami/AutoFisher-VRC/main'
 
 if (-not (Test-Path -LiteralPath $AppPathFile)) {
-    Write-Host '[ERROR] _runtime\APP_PATH.txt がありません。' -ForegroundColor Red
-    Read-Host 'Enter'
+    Write-Host '[ERROR] APP_PATH.txt not found.' -ForegroundColor Red
+    Read-Host 'Press Enter'
     exit 1
 }
 
@@ -16,8 +16,8 @@ $RelativeExe = (Get-Content -LiteralPath $AppPathFile -Raw).Trim()
 $Exe = Join-Path $Runtime $RelativeExe
 
 if (-not (Test-Path -LiteralPath $Exe)) {
-    Write-Host ('[ERROR] day123本体EXEがありません: ' + $Exe) -ForegroundColor Red
-    Read-Host 'Enter'
+    Write-Host ('[ERROR] Base EXE not found: ' + $Exe) -ForegroundColor Red
+    Read-Host 'Press Enter'
     exit 1
 }
 
@@ -38,33 +38,29 @@ Invoke-WebRequest -Uri ($BaseUrl + '/patch/core/control_executor.py') -OutFile (
 Write-Host '[3/4] control_backends.py'
 Invoke-WebRequest -Uri ($BaseUrl + '/patch/core/control_backends.py') -OutFile (Join-Path $CoreDir 'control_backends.py') -UseBasicParsing
 
-Write-Host '[4/4] minimal GUI'
+Write-Host '[4/4] gui/app.py'
 Invoke-WebRequest -Uri ($BaseUrl + '/patch/gui/app.py') -OutFile (Join-Path $GuiDir 'app.py') -UseBasicParsing
 
-$Required = @(
+$Files = @(
     (Join-Path $CoreDir 'pd_controller.py'),
     (Join-Path $CoreDir 'control_executor.py'),
     (Join-Path $CoreDir 'control_backends.py'),
     (Join-Path $GuiDir 'app.py')
 )
 
-foreach ($File in $Required) {
+foreach ($File in $Files) {
     if (-not (Test-Path -LiteralPath $File)) {
-        Write-Host ('[ERROR] 反映失敗: ' + $File) -ForegroundColor Red
-        Read-Host 'Enter'
-        exit 1
+        throw ('Patch file missing: ' + $File)
     }
     if ((Get-Item -LiteralPath $File).Length -lt 200) {
-        Write-Host ('[ERROR] ファイルサイズ異常: ' + $File) -ForegroundColor Red
-        Read-Host 'Enter'
-        exit 1
+        throw ('Patch file too small: ' + $File)
     }
 }
 
 $Version = (Invoke-WebRequest -Uri ($BaseUrl + '/VERSION') -UseBasicParsing).Content.Trim()
-Set-Content -LiteralPath $VersionFile -Value $Version -Encoding UTF8
+Set-Content -LiteralPath $VersionFile -Value $Version -Encoding ASCII
 
 Write-Host ''
-Write-Host ('[更新完了] AutoFisher-VRC ' + $Version) -ForegroundColor Green
-Write-Host '2_RUN.bat で起動してください。'
-Read-Host 'Enter'
+Write-Host ('[DONE] AutoFisher-VRC ' + $Version) -ForegroundColor Green
+Write-Host 'Run 2_RUN.bat.'
+Read-Host 'Press Enter'
