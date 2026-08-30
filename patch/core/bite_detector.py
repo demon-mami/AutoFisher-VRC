@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 import time
 
 import cv2
@@ -55,6 +56,7 @@ def _git_blob_sha(data: bytes) -> str:
 
 
 def _patch_root() -> str:
+    # This module is loaded from <EXE_DIR>/patch/core/bite_detector.py.
     here = os.path.abspath(os.path.dirname(__file__))
     return os.path.dirname(here)
 
@@ -62,10 +64,14 @@ def _patch_root() -> str:
 def _download_bytes(url: str, timeout: float = 15.0) -> bytes:
     errors = []
 
+    # Route 1: Python stdlib.
     try:
         from urllib.request import Request, urlopen
 
-        req = Request(url, headers={"User-Agent": "AutoFisher-VRC/0.2"})
+        req = Request(
+            url,
+            headers={"User-Agent": "AutoFisher-VRC/0.2"},
+        )
         with urlopen(req, timeout=timeout) as response:
             data = response.read()
         if data:
@@ -73,6 +79,7 @@ def _download_bytes(url: str, timeout: float = 15.0) -> bytes:
     except Exception as exc:
         errors.append("urllib=%s" % exc)
 
+    # Route 2: requests is normally present in the day123/Ultralytics bundle.
     try:
         import requests
 
@@ -98,7 +105,10 @@ def _validate_template_bytes(data: bytes, spec: dict) -> None:
         )
     actual = _git_blob_sha(data)
     if actual != spec["git_blob_sha"]:
-        raise RuntimeError("%s blob SHA mismatch: %s" % (spec["name"], actual))
+        raise RuntimeError(
+            "%s blob SHA mismatch: %s"
+            % (spec["name"], actual)
+        )
 
 
 def _decode_template(data: bytes):
@@ -154,6 +164,7 @@ class BiteDetector:
                         _validate_template_bytes(cached, spec)
                         data = cached
                     except Exception:
+                        # Corrupt/old cache is never trusted.
                         try:
                             os.remove(path)
                         except OSError:
@@ -199,7 +210,9 @@ class BiteDetector:
         tmpl = cv2.resize(
             template_gray,
             (tw, th),
-            interpolation=(cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR),
+            interpolation=(
+                cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+            ),
         )
         mask = None
         if template_mask is not None:
@@ -220,6 +233,7 @@ class BiteDetector:
 
         try:
             if mask is not None:
+                # Reproduce abligail's CCOEFF_NORMED + alpha-mask path first.
                 result = cv2.matchTemplate(
                     gray,
                     tmpl,
@@ -233,6 +247,7 @@ class BiteDetector:
                     cv2.TM_CCOEFF_NORMED,
                 )
         except cv2.error:
+            # Older OpenCV builds only support masks for selected methods.
             result = cv2.matchTemplate(
                 gray,
                 tmpl,
@@ -255,8 +270,15 @@ class BiteDetector:
             return 0.0
 
         h = gray.shape[0]
+
+        # abligail's proven templates were captured with a 1280x960 VRChat
+        # client. VRChat UI scale follows the vertical client dimension most
+        # closely, so scale the template to the current client height instead
+        # of resampling the whole screen. This preserves template detail and
+        # avoids the correlation loss seen with frame normalization.
         base_scale = h / float(REFERENCE_HEIGHT)
 
+        # First pass: exact geometry estimate, two template matches only.
         best = 0.0
         for template_gray, template_mask in self.templates:
             value = self._match_one(
@@ -268,6 +290,8 @@ class BiteDetector:
             if value > best:
                 best = value
 
+        # Only refine near a plausible candidate. On ordinary frames this
+        # avoids paying for six full-screen matches every polling cycle.
         if 0.45 <= best < MATCH_THRESHOLD:
             for rel in (0.92, 1.08):
                 scale = base_scale * rel
@@ -313,6 +337,8 @@ def install_bite_wait_patch(FishingBot) -> None:
         detector = get_bite_detector(self)
         detector.prepare()
 
+        # Keep day123's 18 s forced-hook path only as a fallback. The normal
+        # trigger is the actual FISH! HIT/exclamation detection below.
         fallback_s = float(getattr(config, "BITE_FORCE_HOOK", 18.0))
         start_t = time.time()
         consecutive = 0
@@ -326,6 +352,7 @@ def install_bite_wait_patch(FishingBot) -> None:
             except Exception:
                 screen = None
 
+            # Preserve day123's early-minigame preemption.
             if screen is not None:
                 try:
                     ready, fish, bar, progress = self._detect_minigame_ready_now(
@@ -365,10 +392,14 @@ def install_bite_wait_patch(FishingBot) -> None:
                     pass
 
                 if consecutive >= CONFIRM_FRAMES:
+                    # Existing day123 hook function provides the actual
+                    # PostMessage click and post-hook UI wait.
                     preempted = bool(self._hook_fish())
                     return self.running, preempted
 
             if elapsed >= fallback_s:
+                # Safety fallback only. This prevents permanent waiting if the
+                # world visuals are changed and the detector misses.
                 preempted = bool(self._hook_fish())
                 return self.running, preempted
 
