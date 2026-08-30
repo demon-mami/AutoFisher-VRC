@@ -18,7 +18,7 @@ install_bite_wait_patch(FishingBot)
 
 
 class FishingApp:
-    APP_VERSION = "0.2.0"
+    APP_VERSION = "0.2.1"
 
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -34,6 +34,10 @@ class FishingApp:
 
         # Use the HIT reaction delay proven by Shieri as the hook pre-delay.
         config.HOOK_PRE_DELAY = 0.08
+
+        # After dismissing the caught fish, one second is enough before the
+        # next round starts.
+        config.POST_CATCH_DELAY = 1.0
 
         self.bot = FishingBot()
         self.bot.debug_mode = False
