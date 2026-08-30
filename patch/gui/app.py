@@ -1,23 +1,6 @@
-"""
-AutoFisher-VRC minimal GUI patch.
+"""AutoFisher-VRC minimal operating GUI."""
 
-Purpose:
-- keep day123's proven FISH! detection/state-machine/runtime
-- keep the Shieri-style white-bar controller patch
-- remove configuration-heavy UI from normal use
-
-Visible controls:
-- VRChat connection status
-- fishing status
-- catch count
-- Start / Stop
-- Debug overlay toggle
-
-Hotkeys:
-- F9  Start / Stop
-- F10 Stop
-- F11 Debug overlay
-"""
+from __future__ import annotations
 
 import threading
 import tkinter as tk
@@ -26,25 +9,27 @@ from tkinter import ttk
 import keyboard
 
 import config
+from core.bite_detector import install_bite_wait_patch, prepare_bite_detector
 from core.bot import FishingBot
 
 
-class FishingApp:
-    """Minimal operating panel for AutoFisher-VRC."""
+install_bite_wait_patch(FishingBot)
 
-    APP_VERSION = "0.1.0"
+
+class FishingApp:
+    APP_VERSION = "0.2.0"
 
     def __init__(self, root: tk.Tk):
         self.root = root
         self.bot_thread = None
         self._closing = False
 
-        # Fixed operation profile. Advanced day123 GUI functions are not exposed.
         config.IL_RECORD = False
         config.IL_USE_MODEL = False
         config.YOLO_COLLECT = False
         config.YOLO_RAW_DEBUG = False
         config.SHOW_DEBUG = False
+        config.HOOK_PRE_DELAY = 0.08
 
         self.bot = FishingBot()
         self.bot.debug_mode = False
@@ -71,28 +56,25 @@ class FishingApp:
         main = ttk.Frame(self.root, padding=(18, 16))
         main.pack(fill="both", expand=True)
 
-        title = ttk.Label(
+        ttk.Label(
             main,
             text="AutoFisher-VRC",
             font=("TkDefaultFont", 15, "bold"),
-        )
-        title.pack(anchor="w")
+        ).pack(anchor="w")
 
-        self.lbl_connection = ttk.Label(
+        ttk.Label(
             main,
             textvariable=self.var_connection,
-        )
-        self.lbl_connection.pack(anchor="w", pady=(8, 0))
+        ).pack(anchor="w", pady=(8, 0))
 
         row = ttk.Frame(main)
         row.pack(fill="x", pady=(12, 10))
 
-        self.lbl_status = ttk.Label(
+        ttk.Label(
             row,
             textvariable=self.var_status,
             font=("TkDefaultFont", 11, "bold"),
-        )
-        self.lbl_status.pack(side="left")
+        ).pack(side="left")
 
         ttk.Label(
             row,
@@ -109,13 +91,12 @@ class FishingApp:
         debug_row = ttk.Frame(main)
         debug_row.pack(fill="x", pady=(12, 0))
 
-        self.chk_debug = ttk.Checkbutton(
+        ttk.Checkbutton(
             debug_row,
             text="Debug表示  [F11]",
             variable=self.var_debug,
             command=self._toggle_debug_from_ui,
-        )
-        self.chk_debug.pack(side="left")
+        ).pack(side="left")
 
         ttk.Label(
             debug_row,
@@ -124,7 +105,7 @@ class FishingApp:
 
         ttk.Label(
             main,
-            text="通常は開始するだけで使用できます。",
+            text="開始時にHIT検出を確認してから自動釣りを開始します。",
             foreground="gray",
         ).pack(anchor="w", pady=(12, 0))
 
@@ -153,12 +134,26 @@ class FishingApp:
         self.var_connection.set("VRChat: 未検出")
         return False
 
+    def _prepare_hit_detector(self):
+        self.var_status.set("HIT検出を準備中…")
+        self.root.update_idletasks()
+        try:
+            prepare_bite_detector(self.bot)
+            return True
+        except Exception as exc:
+            self.var_status.set("HIT検出の準備エラー")
+            self.bot._autofisher_prepare_error = str(exc)
+            return False
+
     def _start(self):
         if self.bot.running or self._closing:
             return
 
         if not self._refresh_connection():
             self.var_status.set("VRChatを起動してください")
+            return
+
+        if not self._prepare_hit_detector():
             return
 
         try:
@@ -224,12 +219,12 @@ class FishingApp:
                 self.var_status.set("待機")
                 self.btn_main.config(text="開始  [F9]")
 
-            self.var_count.set(f"釣果  {self.bot.fish_count}")
+            self.var_count.set("釣果  %d" % self.bot.fish_count)
 
-            if not self.bot.window.is_valid():
-                self.var_connection.set("VRChat: 未検出")
-            else:
+            if self.bot.window.is_valid():
                 self.var_connection.set("VRChat: 接続済み")
+            else:
+                self.var_connection.set("VRChat: 未検出")
         except Exception:
             pass
 
