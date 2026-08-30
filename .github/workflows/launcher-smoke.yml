@@ -38,6 +38,11 @@ jobs:
             throw "First START.bat run failed with exit code $LASTEXITCODE"
           }
 
+          Write-Host "--- Runtime tree after first run ---"
+          Get-ChildItem -LiteralPath $root -Recurse -Force | ForEach-Object {
+            Write-Host $_.FullName
+          }
+
           $patch = Join-Path $exeDir "patch"
           $required = @(
             "core\bite_detector.py",
