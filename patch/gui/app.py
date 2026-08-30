@@ -13,6 +13,7 @@ from core.bite_detector import install_bite_wait_patch, prepare_bite_detector
 from core.bot import FishingBot
 
 
+# Patch day123's fixed-time wait before any FishingBot instance is created.
 install_bite_wait_patch(FishingBot)
 
 
@@ -24,11 +25,14 @@ class FishingApp:
         self.bot_thread = None
         self._closing = False
 
+        # Fixed normal-use profile.
         config.IL_RECORD = False
         config.IL_USE_MODEL = False
         config.YOLO_COLLECT = False
         config.YOLO_RAW_DEBUG = False
         config.SHOW_DEBUG = False
+
+        # Use the HIT reaction delay proven by Shieri as the hook pre-delay.
         config.HOOK_PRE_DELAY = 0.08
 
         self.bot = FishingBot()
@@ -142,6 +146,7 @@ class FishingApp:
             return True
         except Exception as exc:
             self.var_status.set("HIT検出の準備エラー")
+            # Keep the exact reason available without exposing the old log UI.
             self.bot._autofisher_prepare_error = str(exc)
             return False
 
@@ -153,6 +158,7 @@ class FishingApp:
             self.var_status.set("VRChatを起動してください")
             return
 
+        # Never enter an automation run with an unusable HIT detector.
         if not self._prepare_hit_detector():
             return
 
