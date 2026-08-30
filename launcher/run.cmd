@@ -35,6 +35,8 @@ if not defined APP_EXE goto FAIL
 
 :HAVE_APP
 for %%I in ("%APP_EXE%") do set "EXE_DIR=%%~dpI"
+if defined AUTOFISHER_LAUNCHER_TEST echo [TEST] APP_EXE=%APP_EXE%
+if defined AUTOFISHER_LAUNCHER_TEST echo [TEST] EXE_DIR=%EXE_DIR%
 
 if defined AUTOFISHER_LAUNCHER_TEST goto SKIP_RUNNING_CHECK
 tasklist /NH 2>nul | find /I "VRC auto fish-CUDA.exe" >nul
@@ -173,6 +175,9 @@ if not exist "%SRC_ROOT%\patch\gui\app.py" goto SYNC_FAIL
 set "PATCH_DIR=%EXE_DIR%patch"
 set "PATCH_NEW=%EXE_DIR%patch.__new"
 set "PATCH_OLD=%EXE_DIR%patch.__old"
+if defined AUTOFISHER_LAUNCHER_TEST echo [TEST] PATCH_DIR=%PATCH_DIR%
+if defined AUTOFISHER_LAUNCHER_TEST echo [TEST] PATCH_NEW=%PATCH_NEW%
+if defined AUTOFISHER_LAUNCHER_TEST echo [TEST] SRC_ROOT=%SRC_ROOT%
 if exist "%PATCH_NEW%" rmdir /s /q "%PATCH_NEW%"
 if exist "%PATCH_OLD%" rmdir /s /q "%PATCH_OLD%"
 mkdir "%PATCH_NEW%" >nul 2>nul
@@ -183,10 +188,12 @@ if not exist "%PATCH_NEW%\core\pd_controller.py" goto SYNC_FAIL_BEFORE_SWAP
 if not exist "%PATCH_NEW%\core\control_executor.py" goto SYNC_FAIL_BEFORE_SWAP
 if not exist "%PATCH_NEW%\core\control_backends.py" goto SYNC_FAIL_BEFORE_SWAP
 if not exist "%PATCH_NEW%\gui\app.py" goto SYNC_FAIL_BEFORE_SWAP
+if defined AUTOFISHER_LAUNCHER_TEST dir /s /b "%PATCH_NEW%"
 
 if exist "%PATCH_DIR%" move "%PATCH_DIR%" "%PATCH_OLD%" >nul
 move "%PATCH_NEW%" "%PATCH_DIR%" >nul
 if errorlevel 1 goto SWAP_ROLLBACK
+if defined AUTOFISHER_LAUNCHER_TEST dir /s /b "%EXE_DIR%"
 
 if exist "%PATCH_OLD%" rmdir /s /q "%PATCH_OLD%"
 >"%PATCH_REF_FILE%" echo %REF%
