@@ -36,9 +36,11 @@ if not defined APP_EXE goto FAIL
 :HAVE_APP
 for %%I in ("%APP_EXE%") do set "EXE_DIR=%%~dpI"
 
+if defined AUTOFISHER_LAUNCHER_TEST goto SKIP_RUNNING_CHECK
 tasklist /NH 2>nul | find /I "VRC auto fish-CUDA.exe" >nul
 if not errorlevel 1 goto ALREADY_RUNNING
 
+:SKIP_RUNNING_CHECK
 call :SYNC_PATCH
 if not errorlevel 1 goto LAUNCH
 
@@ -47,6 +49,10 @@ if errorlevel 1 goto FAIL
 echo [AutoFisher-VRC] Update check failed. Starting the last verified local patch.
 
 :LAUNCH
+if defined AUTOFISHER_LAUNCHER_TEST (
+    echo [AutoFisher-VRC] Launcher smoke test passed.
+    exit /b 0
+)
 start "" "%APP_EXE%"
 if errorlevel 1 goto FAIL
 echo [AutoFisher-VRC] Started.
