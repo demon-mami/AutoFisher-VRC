@@ -1,0 +1,70 @@
+name: Launcher smoke test
+
+on:
+  push:
+    paths:
+      - "START.bat"
+      - "launcher/**"
+      - "patch/**"
+      - "VERSION"
+      - ".github/workflows/launcher-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run one-click launcher against a fake installed runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $root = Join-Path $env:RUNNER_TEMP "AutoFisher Test Root"
+          $exeDir = Join-Path $root "_runtime\app\VRC auto fish 26031901"
+          New-Item -ItemType Directory -Force -Path $exeDir | Out-Null
+          New-Item -ItemType File -Force -Path (Join-Path $exeDir "VRC auto fish-CUDA.exe") | Out-Null
+          Copy-Item -LiteralPath ".\START.bat" -Destination (Join-Path $root "START.bat") -Force
+
+          $env:AUTOFISHER_STABLE_REF_OVERRIDE = "${{ github.sha }}"
+          $env:AUTOFISHER_LAUNCHER_TEST = "1"
+
+          & (Join-Path $root "START.bat")
+          if ($LASTEXITCODE -ne 0) {
+            throw "First START.bat run failed with exit code $LASTEXITCODE"
+          }
+
+          $patch = Join-Path $exeDir "patch"
+          $required = @(
+            "core\bite_detector.py",
+            "core\pd_controller.py",
+            "core\control_executor.py",
+            "core\control_backends.py",
+            "gui\app.py"
+          )
+          foreach ($relative in $required) {
+            $path = Join-Path $patch $relative
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Missing patched file: $relative"
+            }
+          }
+
+          $refFile = Join-Path $root "_runtime\PATCH_REF.txt"
+          if (-not (Test-Path -LiteralPath $refFile)) {
+            throw "PATCH_REF.txt was not created"
+          }
+          $installedRef = (Get-Content -LiteralPath $refFile -Raw).Trim()
+          if ($installedRef -ne "${{ github.sha }}") {
+            throw "Installed ref mismatch: $installedRef"
+          }
+
+          & (Join-Path $root "START.bat")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Second cached START.bat run failed with exit code $LASTEXITCODE"
+          }
+
+          Write-Host "Launcher smoke test passed."
