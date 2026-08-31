@@ -1,0 +1,2 @@
+Known-good runtime patch base: 29d9a730eaf4ed61d09647f54817990559c6eac4
+This commit exists only to force START.bat to re-sync the same verified patch files.
